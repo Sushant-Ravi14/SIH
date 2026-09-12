@@ -12,39 +12,28 @@ const LANG_CODES = {
 export default function VoiceInput({ label, value, onChangeText, fieldName, placeholder, multiline, language = 'hi' }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [availableVoices, setAvailableVoices] = useState([]);
   const recognitionRef = useRef(null);
-
-  React.useEffect(() => {
-    if ('speechSynthesis' in window) {
-      const loadVoices = () => {
-        setAvailableVoices(window.speechSynthesis.getVoices());
-      };
-      loadVoices();
-      window.speechSynthesis.onvoiceschanged = loadVoices;
-    }
-  }, []);
 
   const speakPrompt = async (e) => {
     e.preventDefault();
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      
-      setIsProcessing(true);
-      let textToSpeak = label;
-      
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      const langCode = LANG_CODES[language] || 'en-US';
-      utterance.lang = langCode;
-      
-      // Fallback for Android Chrome where some regional languages might have different codes
-      const voice = availableVoices.find(v => v.lang === langCode || v.lang.replace('_', '-').startsWith(language) || v.lang.startsWith(language));
-      if (voice) {
-        utterance.voice = voice;
+    setIsProcessing(true);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/voice/synthesize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: label, language })
+      });
+      const data = await res.json();
+      if (data.status === 'success' && data.audio_base64) {
+        const audio = new Audio(`data:audio/mp3;base64,${data.audio_base64}`);
+        audio.play();
+      } else {
+        console.error("TTS failed:", data.message);
       }
-      
+    } catch (err) {
+      console.error('Error fetching TTS:', err);
+    } finally {
       setIsProcessing(false);
-      window.speechSynthesis.speak(utterance);
     }
   };
 

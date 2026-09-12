@@ -112,7 +112,7 @@ export default function Navbar({
           {/* Right Controls Bar */}
           <div className="flex items-center space-x-2 sm:space-x-3">
             {/* Language Selector */}
-            <div className="relative" ref={langMenuRef} onMouseLeave={() => setShowLangMenu(false)}>
+            <div className="relative" ref={langMenuRef}>
               <button
                 onClick={() => { setShowLangMenu(!showLangMenu); setShowPersonaMenu(false); }}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-white hover:bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-700 transition shadow-xs cursor-pointer"
@@ -165,7 +165,7 @@ export default function Navbar({
             </div>
 
             {/* User Persona Chip */}
-            <div className="relative" ref={personaMenuRef} onMouseLeave={() => setShowPersonaMenu(false)}>
+            <div className="relative" ref={personaMenuRef}>
               <button
                 onClick={() => { setShowPersonaMenu(!showPersonaMenu); setShowLangMenu(false); }}
                 className="flex items-center space-x-2.5 pl-1.5 pr-3 py-1 rounded-full bg-white hover:bg-slate-50 border border-slate-200 shadow-xs transition cursor-pointer"

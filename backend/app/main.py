@@ -9,6 +9,9 @@ from .services.agent import process_conversation, translate_dict
 from .core.vectordb import query_recommendations
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from gtts import gTTS
+from io import BytesIO
+import base64
 
 app = FastAPI(title="PM-AJAY Voice Assistant API", version="1.0.0")
 
@@ -96,6 +99,24 @@ async def generate_prompt(field_name: str, language: str = "hi"):
     prompt_text = generate_voice_prompt(field_name, language)
     return {"status": "success", "prompt": prompt_text}
 
+class SynthesizeRequest(BaseModel):
+    text: str
+    language: str
+
+@app.post("/api/v1/voice/synthesize")
+async def synthesize_voice(req: SynthesizeRequest):
+    try:
+        lang = req.language.split("-")[0]
+        # gTTS supports hi, mr, gu, ta, te, bn, ur, ml, kn
+        tts = gTTS(text=req.text, lang=lang)
+        fp = BytesIO()
+        tts.write_to_fp(fp)
+        audio_base64 = base64.b64encode(fp.getvalue()).decode('utf-8')
+        return {"status": "success", "audio_base64": audio_base64}
+    except Exception as e:
+        print(f"TTS Error: {e}")
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/v1/location/resolve-pincode")
 async def resolve_pincode(pincode: str):
     try:
@@ -116,7 +137,7 @@ async def resolve_pincode(pincode: str):
 async def reverse_geocode(lat: str, lon: str):
     try:
         url = f"https://api.bigdatacloud.net/data/reverse-geocode-client?latitude={lat}&longitude={lon}&localityLanguage=en"
-        res = requests.get(url).json()
+        res = requests.get(url, timeout=3).json()
         return {"status": "success", "pincode": res.get("postcode", "")}
     except Exception as e:
         return {"status": "error", "message": str(e)}

@@ -81,9 +81,9 @@ export default function Registration({ phone, onRegistrationSuccess }) {
         setLocationLoading(false);
       }
     }, (err) => {
-      alert("Unable to retrieve your location");
+      alert("Unable to retrieve your location (Timed out or denied). Please enter PIN manually.");
       setLocationLoading(false);
-    });
+    }, { timeout: 7000, enableHighAccuracy: false, maximumAge: 60000 });
   };
 
   const handleSubmit = async (e) => {
