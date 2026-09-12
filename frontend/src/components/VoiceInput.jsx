@@ -1,50 +1,115 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Mic, MicOff, Volume2, Loader2 } from 'lucide-react';
 
-export default function VoiceInput({ label, value, onChangeText, fieldName, placeholder, multiline }) {
+
+
+const LANG_CODES = {
+  hi: 'hi-IN', bn: 'bn-IN', te: 'te-IN', mr: 'mr-IN', 
+  ta: 'ta-IN', ur: 'ur-IN', gu: 'gu-IN', kn: 'kn-IN', 
+  or: 'or-IN', ml: 'ml-IN', pa: 'pa-IN', as: 'as-IN', en: 'en-US'
+};
+
+export default function VoiceInput({ label, value, onChangeText, fieldName, placeholder, multiline, language = 'hi' }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const recognitionRef = useRef(null);
 
-  const speakPrompt = (e) => {
+  const speakPrompt = async (e) => {
     e.preventDefault();
     if ('speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(`Please enter your ${label}.`);
+      window.speechSynthesis.cancel();
+      
+      setIsProcessing(true);
+      let textToSpeak = `Please enter your ${label}.`;
+      
+      if (language !== 'en') {
+        try {
+          const res = await fetch(`http://localhost:8000/api/v1/voice/generate-prompt?field_name=${encodeURIComponent(label)}&language=${language}`);
+          const data = await res.json();
+          if (data.status === 'success' && data.prompt) {
+            textToSpeak = data.prompt;
+          }
+        } catch (e) {
+          console.error("Error fetching dynamic voice prompt:", e);
+        }
+      }
+      setIsProcessing(false);
+      
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      const langCode = LANG_CODES[language] || 'en-US';
+      utterance.lang = langCode;
+      
+      const voices = window.speechSynthesis.getVoices();
+      const voice = voices.find(v => v.lang === langCode || v.lang.startsWith(language));
+      if (voice) {
+        utterance.voice = voice;
+      }
+      
       window.speechSynthesis.speak(utterance);
     }
   };
 
-  const startRecording = (e) => {
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+
+  const startRecording = async (e) => {
     e.preventDefault();
-    setIsRecording(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        
+        setIsProcessing(true);
+        const formData = new FormData();
+        formData.append('audio_file', audioBlob, 'recording.webm');
+        formData.append('field_name', label);
+        formData.append('language', language);
+
+        try {
+          const res = await fetch('http://localhost:8000/api/v1/voice/transcribe-field', {
+            method: 'POST',
+            body: formData,
+          });
+          const data = await res.json();
+          if (data.text && !data.text.includes("Error")) {
+             if (multiline) {
+               onChangeText(value ? `${value} ${data.text}` : data.text);
+             } else {
+               onChangeText(data.text);
+             }
+          }
+        } catch (err) {
+          console.error("Transcription error:", err);
+        } finally {
+          setIsProcessing(false);
+        }
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Error accessing microphone:", err);
+      alert("Please allow microphone access to use voice input.");
+    }
   };
 
   const stopRecording = (e) => {
     e.preventDefault();
-    setIsRecording(false);
-    setIsProcessing(true);
-    
-    // Simulate network/transcription delay
-    setTimeout(() => {
-      mockTranscribeAudio();
-    }, 1500);
-  };
-
-  const mockTranscribeAudio = () => {
-    const mockResponses = {
-      phone: '9876543210',
-      otp: '1234',
-      name: 'Rituraj Jha',
-      age: '24',
-      gender: 'Male',
-      disability: 'None',
-      primary_skill: 'Tailoring',
-      field_of_interest: 'Fashion Design',
-      description: 'I want to learn how to design modern clothes and start my own boutique.'
-    };
-    
-    const text = mockResponses[fieldName.toLowerCase()] || 'Sample voice input';
-    onChangeText(text);
-    setIsProcessing(false);
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      setIsRecording(false);
+    }
   };
 
   return (
