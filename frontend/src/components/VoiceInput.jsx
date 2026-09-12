@@ -12,7 +12,18 @@ const LANG_CODES = {
 export default function VoiceInput({ label, value, onChangeText, fieldName, placeholder, multiline, language = 'hi' }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState([]);
   const recognitionRef = useRef(null);
+
+  React.useEffect(() => {
+    if ('speechSynthesis' in window) {
+      const loadVoices = () => {
+        setAvailableVoices(window.speechSynthesis.getVoices());
+      };
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
 
   const speakPrompt = async (e) => {
     e.preventDefault();
@@ -20,31 +31,19 @@ export default function VoiceInput({ label, value, onChangeText, fieldName, plac
       window.speechSynthesis.cancel();
       
       setIsProcessing(true);
-      let textToSpeak = `Please enter your ${label}.`;
-      
-      if (language !== 'en') {
-        try {
-          const res = await fetch(`http://localhost:8000/api/v1/voice/generate-prompt?field_name=${encodeURIComponent(label)}&language=${language}`);
-          const data = await res.json();
-          if (data.status === 'success' && data.prompt) {
-            textToSpeak = data.prompt;
-          }
-        } catch (e) {
-          console.error("Error fetching dynamic voice prompt:", e);
-        }
-      }
-      setIsProcessing(false);
+      let textToSpeak = label;
       
       const utterance = new SpeechSynthesisUtterance(textToSpeak);
       const langCode = LANG_CODES[language] || 'en-US';
       utterance.lang = langCode;
       
-      const voices = window.speechSynthesis.getVoices();
-      const voice = voices.find(v => v.lang === langCode || v.lang.startsWith(language));
+      // Fallback for Android Chrome where some regional languages might have different codes
+      const voice = availableVoices.find(v => v.lang === langCode || v.lang.replace('_', '-').startsWith(language) || v.lang.startsWith(language));
       if (voice) {
         utterance.voice = voice;
       }
       
+      setIsProcessing(false);
       window.speechSynthesis.speak(utterance);
     }
   };
