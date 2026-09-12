@@ -7,6 +7,7 @@ from .models import schemas
 from .services.asr_tts import BhashiniConnector
 from .services.agent import process_conversation, translate_dict
 from .core.vectordb import query_recommendations
+from .core.db import get_database
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from gtts import gTTS
@@ -50,19 +51,44 @@ async def request_otp(req: OTPRequest):
 @app.post("/api/v1/auth/verify-otp")
 async def verify_otp(req: OTPVerify):
     if req.otp == "1234":
-        # Mock logic: pretend numbers starting with '99' already exist
-        is_new_user = not req.phone.startswith("99")
-        return {
-            "status": "success", 
-            "message": "OTP verified successfully",
-            "is_new_user": is_new_user
-        }
+        db = get_database()
+        user = await db.users.find_one({"phone": req.phone})
+        
+        if user:
+            # User exists
+            profile_data = user.get("profile", {})
+            return {
+                "status": "success",
+                "message": "OTP verified successfully",
+                "is_new_user": False,
+                "profile": profile_data
+            }
+        else:
+            # New user
+            return {
+                "status": "success", 
+                "message": "OTP verified successfully",
+                "is_new_user": True,
+                "profile": None
+            }
     return {"status": "error", "message": "Invalid OTP"}
 
 @app.post("/api/v1/register")
 async def register_user(form: RegistrationForm):
-    # Mock saving to DB
-    return {"status": "success", "message": "Registration complete!", "data": form.dict()}
+    db = get_database()
+    profile_data = form.dict(exclude_unset=True)
+    phone = profile_data.pop("phone", None)
+    
+    if not phone:
+        return {"status": "error", "message": "Phone number is required"}
+        
+    await db.users.update_one(
+        {"phone": phone},
+        {"$set": {"profile": profile_data}},
+        upsert=True
+    )
+    
+    return {"status": "success", "message": "Registration complete!", "data": profile_data}
 
 @app.post("/api/v1/voice/transcribe-field")
 async def transcribe_field(
